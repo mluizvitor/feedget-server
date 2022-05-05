@@ -1,40 +1,37 @@
 import express from  'express'
-import nodemailer from  'nodemailer'
-import { prisma } from './prisma';
+import { NodemailerAdapter } from './adapters/nodemailer/NodemailerAdapter';
+import { PrismaFeedbacksRepository } from './repositories/prisma/PrismaFeedbacksRepository';
+import { SubmitFeedbackUseCase } from './use-cases/SubmitFeedbackUseCase';
 
 export const routes = express.Router();
-
-const transport = nodemailer.createTransport({
-  host: "smtp.mailtrap.io",
-  port: 2525,
-  auth: {
-    user: process.env.MAILTRAP_USER,
-    pass: process.env.MAILTRAP_PASS
-  }
-});
 
 routes.post('/feedbacks', async (req, res) => {
   const {type, comment, screenshot} = req.body;
 
-  const feedback = await prisma.feedback.create({
-    data: {
-      type,
-      comment,
-      screenshot
-    }
+
+  const prismaFeedbacksRepository = new PrismaFeedbacksRepository();
+  const nodemailerAdapter = new NodemailerAdapter();
+  
+  /**
+   * O UseCase de submissão do feedback irá receber as dependências
+   * na ordem que foi definida em seu construtor. 
+   * Aqui é usada a Inversão de Dependência.
+   */
+  const submitFeedbackUseCase = new SubmitFeedbackUseCase(
+    prismaFeedbacksRepository,
+    nodemailerAdapter
+  );
+
+  /**
+   * Executa o que foi definido em submitFeedbackUseCase, passando os
+   * dados necessários para os métodos internos. Esses métodos serão
+   * executados utilizando as dependências definidas anteriormente.
+   */
+  await submitFeedbackUseCase.execute({
+    type,
+    comment,
+    screenshot
   })
 
-  await transport.sendMail({
-    from: 'Equipe Feedget <oi@feedget.com>',
-    to: 'Vitor Monteiro <manutencao@feedget.com>',
-    subject: `[${type}] Novo Feedback`,
-    html: [
-      `<div style="font-family: sans-serif; font-size: 16px, color: #222;">`,
-      `<p>Tipo do feedback: <strong>${type}</strong></p>`,
-      `<p>Comentário: ${comment}</p>`,
-      `</div>`
-    ].join('\n')
-  })
-
-  return res.status(201).json({ data: feedback });
+  return res.status(201).send();
 })
